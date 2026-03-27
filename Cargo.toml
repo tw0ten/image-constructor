@@ -1,0 +1,8 @@
+[package]
+name = "image-constructor"
+edition = "2024"
+
+[dependencies]
+image = "*"
+imageproc = "*"
+rand = "*"

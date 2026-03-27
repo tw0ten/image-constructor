@@ -1,2 +1,7 @@
 #!/bin/sh
 set -e
+
+cargo build --release
+
+mkdir -p .io/o
+cp target/release/image-constructor .io/o
