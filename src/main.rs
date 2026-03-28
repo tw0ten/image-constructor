@@ -1,51 +1,96 @@
 use image::RgbImage;
 use imageproc::{
-	drawing::draw_filled_rect,
+	drawing::{draw_filled_rect, flood_fill_mut},
 	rect::{Rect, Region},
 	utils::load_image_or_panic,
 };
 use rand::Rng;
 use std::{collections::HashMap, env, hash::Hash, path::Path};
 
-const SCORE_MIN_DELTA: f64 = 0.0;
-const SCORE_DONE: f64 = 1.0;
-const SAVE_ITERATIONS: bool = true;
-
 fn main() {
 	let _args: Vec<String> = env::args().collect();
-	let args: Vec<&str> = _args.iter().map(|s| s.as_str()).collect();
+	let _options: Vec<(usize, (String, String))> = _args
+		.iter()
+		.enumerate()
+		.take_while(|(_, i)| *i != "-")
+		.filter_map(|(i, v)| match v {
+			_ if v.starts_with("-") => Some((i, (v.into(), _args[i + 1].to_owned()))),
+			_ => None,
+		})
+		.collect();
+	let mut options: HashMap<String, String> = HashMap::new();
+	_options
+		.clone()
+		.into_iter()
+		.for_each(|(_, (k, v))| _ = options.insert(k, v));
+	let args: Vec<&str> = _args
+		.iter()
+		.enumerate()
+		.filter(|(i, _)| {
+			_options
+				.iter()
+				.find(|(i1, _)| i1 == i || *i1 == i - 1)
+				.is_none()
+		})
+		.map(|(_, s)| s.as_str())
+		.collect();
 	match &args[1..] {
 		[source, destination] => {
-			let destination = Path::new(destination);
+			let score_done = options
+				.get("-s")
+				.and_then(|i| i.parse::<f64>().ok())
+				.unwrap_or(1.0)
+				.min(1.0);
+			let save_iterations = options
+				.get("--save-every-nth")
+				.and_then(|i| i.parse::<usize>().ok())
+				.unwrap_or(1);
+
 			let b: RgbImage = load_image_or_panic(source).into();
-
 			assert!(score(&b, &b) == 1.0);
-
-			let mut a = RgbImage::new(b.width(), b.height());
 			eprintln!("source = {:?}", source);
 
+			let destination = Path::new(destination);
+
+			let mut a = RgbImage::new(b.width(), b.height());
+			flood_fill_mut(&mut a, 0, 0, **find_mode(&b.pixels().collect::<Vec<_>>()));
+
+			let mut n = 1;
 			let mut s = 0.0;
-			for i in 0.. {
-				let a1 = draw(a.clone(), &b);
-				let s1 = score(&a1, &b);
-				if s1 - s < SCORE_MIN_DELTA {
-					continue;
-				}
-				a = a1;
-				s = s1;
-				eprintln!("#{} {:.12} / {} = {:.3}", i, s, SCORE_DONE, s / SCORE_DONE);
-				if s >= SCORE_DONE {
+			for i in n.. {
+				if s >= score_done {
 					break;
 				}
-				if SAVE_ITERATIONS {
+
+				let a1 = draw(a.clone(), &b);
+				let s1 = score(&a1, &b);
+
+				if s1 <= s {
+					continue;
+				}
+
+				(a, s, n) = (a1, s1, n + 1);
+
+				if save_iterations > 0 && n % save_iterations == 0 {
 					a.save(destination).unwrap();
 				}
+				eprintln!(
+					"#{}+{} {:.12} / {} = {:.3}",
+					n,
+					i - n,
+					s,
+					score_done,
+					s / score_done
+				);
 			}
 
 			a.save(destination).unwrap();
 			println!("{}", destination.display())
 		}
-		i => panic!("invalid args: {:?}\n\t<source> <destination>", i),
+		i => panic!(
+			"invalid args: {:?}\n\t<source> <destination>\n\t-s 1.0 <0.0..=1.0>\n\t--save-every-nth 1 <usize>",
+			i
+		),
 	}
 }
 
@@ -67,7 +112,7 @@ fn score(a: &RgbImage, b: &RgbImage) -> f64 {
 fn draw(a: RgbImage, b: &RgbImage) -> RgbImage {
 	let mut r = rand::rng();
 	let (w0, h0) = (a.width(), a.height());
-	let (w, h) = (r.random_range(1..=w0), r.random_range(1..=h0));
+	let (w, h) = (1 + r.random_range(0..w0 / 4), 1 + r.random_range(0..h0 / 4));
 	let rect = Rect::at(
 		r.random_range(0..=w0 - w) as i32,
 		r.random_range(0..=h0 - h) as i32,
@@ -77,11 +122,10 @@ fn draw(a: RgbImage, b: &RgbImage) -> RgbImage {
 		&a,
 		rect,
 		**find_mode(
-			b.enumerate_pixels()
+			&b.enumerate_pixels()
 				.filter(|(x, y, _)| rect.contains(*x as i32, *y as i32))
 				.map(|(_, _, v)| v)
-				.collect::<Vec<_>>()
-				.as_slice(),
+				.collect::<Vec<_>>(),
 		),
 	)
 }
