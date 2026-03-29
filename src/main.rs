@@ -4,7 +4,7 @@ use imageproc::{
 	rect::{Rect, Region},
 	utils::load_image_or_panic,
 };
-use rand::Rng;
+use rand::{Rng, rngs::ThreadRng};
 use std::{collections::HashMap, env, hash::Hash, path::Path};
 
 fn main() {
@@ -55,6 +55,8 @@ fn main() {
 			let mut a = RgbImage::new(b.width(), b.height());
 			flood_fill_mut(&mut a, 0, 0, **find_mode(&b.pixels().collect::<Vec<_>>()));
 
+			let mut rng = rand::rng();
+
 			let mut n = 1;
 			let mut s = 0.0;
 			for i in n.. {
@@ -62,7 +64,7 @@ fn main() {
 					break;
 				}
 
-				let a1 = draw(a.clone(), &b);
+				let a1 = draw(&mut rng, &a, &b, s);
 				let s1 = score(&a1, &b);
 
 				if s1 <= s {
@@ -72,8 +74,9 @@ fn main() {
 				(a, s, n) = (a1, s1, n + 1);
 
 				if save_iterations > 0 && n % save_iterations == 0 {
-					a.save(destination).unwrap();
+					_ = a.save(destination);
 				}
+
 				eprintln!(
 					"#{}+{} {:.12} / {} = {:.3}",
 					n,
@@ -101,7 +104,7 @@ fn score(a: &RgbImage, b: &RgbImage) -> f64 {
 		.map(|(i0, i1)| {
 			[(i0[0], i1[0]), (i0[1], i1[1]), (i0[2], i1[2])]
 				.iter()
-				.map(|(a, b)| (*a as f64 - *b as f64).abs() / 255.0)
+				.map(|&(a, b)| (a as f64 - b as f64).abs() / 255.0)
 				.sum::<f64>()
 				/ 3.0
 		})
@@ -109,21 +112,25 @@ fn score(a: &RgbImage, b: &RgbImage) -> f64 {
 		/ (a.width() * a.height()) as f64
 }
 
-fn draw(a: RgbImage, b: &RgbImage) -> RgbImage {
-	let mut r = rand::rng();
+fn draw(r: &mut ThreadRng, a: &RgbImage, b: &RgbImage, f: f64) -> RgbImage {
+	let f = 1.0 - f / 1.5;
 	let (w0, h0) = (a.width(), a.height());
-	let (w, h) = (1 + r.random_range(0..w0 / 4), 1 + r.random_range(0..h0 / 4));
+	let s = w0.min(h0);
+	let (w, h) = (
+		1 + r.random_range(0..=(s as f64 * f) as u32),
+		1 + r.random_range(0..=(s as f64 * f) as u32),
+	);
 	let rect = Rect::at(
 		r.random_range(0..=w0 - w) as i32,
 		r.random_range(0..=h0 - h) as i32,
 	)
 	.of_size(w, h);
 	draw_filled_rect(
-		&a,
+		a,
 		rect,
 		**find_mode(
 			&b.enumerate_pixels()
-				.filter(|(x, y, _)| rect.contains(*x as i32, *y as i32))
+				.filter(|&(x, y, _)| rect.contains(x as i32, y as i32))
 				.map(|(_, _, v)| v)
 				.collect::<Vec<_>>(),
 		),
