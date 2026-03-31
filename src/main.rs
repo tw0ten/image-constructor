@@ -45,6 +45,10 @@ fn main() {
 				.get("--save-every-nth")
 				.and_then(|i| i.parse::<usize>().ok())
 				.unwrap_or(1);
+			let o_continue = options
+				.get("--continue")
+				.and_then(|i| i.parse::<bool>().ok())
+				.unwrap_or(true);
 
 			let b: RgbImage = load_image_or_panic(source).into();
 			assert!(score(&b, &b) == 1.0);
@@ -54,6 +58,10 @@ fn main() {
 
 			let mut a = RgbImage::new(b.width(), b.height());
 			flood_fill_mut(&mut a, 0, 0, **find_mode(&b.pixels().collect::<Vec<_>>()));
+
+			if o_continue {
+				a = load_image_or_panic(destination).into();
+			}
 
 			let mut rng = rand::rng();
 
@@ -91,8 +99,18 @@ fn main() {
 			println!("{}", destination.display())
 		}
 		i => panic!(
-			"invalid args: {:?}\n\t<source> <destination>\n\t-s 1.0 <0.0..=1.0>\n\t--save-every-nth 1 <usize>",
-			i
+			"invalid args: {:?}\n{}{}",
+			i,
+			format!("{:?} <source> <destination>", args[0]),
+			[
+				"-s 1.0 <0.0..=1.0>",
+				"--save-every-nth 1 <usize>",
+				"--continue true <bool>"
+			]
+			.iter()
+			.map(|i| format!("\n\t{}", i))
+			.collect::<Vec<_>>()
+			.concat()
 		),
 	}
 }
